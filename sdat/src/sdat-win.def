@@ -1,0 +1,2 @@
+LIBRARY sdat.dll
+EXPORTS R_init_sdat
