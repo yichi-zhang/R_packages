@@ -1,0 +1,2 @@
+LIBRARY lmeVarComp.dll
+EXPORTS R_init_lmeVarComp

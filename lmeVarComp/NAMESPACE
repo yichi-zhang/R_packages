@@ -1,0 +1,13 @@
+useDynLib(lmeVarComp, .registration = TRUE)
+importFrom(
+  "stats", 
+  "contr.treatment", "formula", "model.frame",
+  "model.matrix", "model.response", "qchisq", "qf",
+  "quantile")
+importFrom(
+  "utils", 
+  "combn")
+export(rlr.test)
+export(mnls)
+export(test.varcomp)
+export(test.additivity)
