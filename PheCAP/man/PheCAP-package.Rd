@@ -42,16 +42,17 @@ Liao, K. P., Cai, T., Savova, G. K., Murphy, S. N., Karlson, E. W., Ananthakrish
 \examples{
 # Generate simulated data.
 latent <- rgamma(8000, 0.3)
+latent2 <- rgamma(8000, 0.3)
 ehr_data <- data.frame(
   ICD1 = rpois(8000, 7 * (rgamma(8000, 0.2) + latent) / 0.5),
   ICD2 = rpois(8000, 6 * (rgamma(8000, 0.8) + latent) / 1.1),
-  ICD3 = rpois(8000, 1 * rgamma(8000, 0.5) / 0.5),
+  ICD3 = rpois(8000, 1 * rgamma(8000, 0.5 + latent2) / 0.5),
   ICD4 = rpois(8000, 2 * rgamma(8000, 0.5) / 0.5),
   NLP1 = rpois(8000, 8 * (rgamma(8000, 0.2) + latent) / 0.6),
   NLP2 = rpois(8000, 2 * (rgamma(8000, 1.1) + latent) / 1.5),
   NLP3 = rpois(8000, 5 * (rgamma(8000, 0.1) + latent) / 0.5),
   NLP4 = rpois(8000, 11 * rgamma(8000, 1.9 + latent) / 1.9),
-  NLP5 = rpois(8000, 3 * rgamma(8000, 0.5) / 0.5),
+  NLP5 = rpois(8000, 3 * rgamma(8000, 0.5 + latent2) / 0.5),
   NLP6 = rpois(8000, 2 * rgamma(8000, 0.5) / 0.5),
   NLP7 = rpois(8000, 1 * rgamma(8000, 0.5) / 0.5),
   HU = rpois(8000, 30 * rgamma(8000, 0.1) / 0.1),
