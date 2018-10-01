@@ -1,3 +1,102 @@
+phecap_set_rng_seed <- function(seed)
+{
+  if (exists(".Random.seed", envir = .GlobalEnv)) {
+    oldseed <- .GlobalEnv$.Random.seed
+  } else {
+    oldseed <- NULL
+  }
+  set.seed(seed)
+  return(oldseed)
+}
+
+phecap_restore_rng_seed <- function(oldseed)
+{
+  if (!is.null(oldseed)) {
+    .GlobalEnv$.Random.seed <- oldseed
+  } else {
+    rm(".Random.seed", envir = .GlobalEnv)
+  }
+  return(invisible(NULL))
+}
+
+
+phecap_get_roc_auc_with_splits <- function(
+  x, y, penalty_weight = NULL, 
+  method = "lasso_bic", 
+  train_percent = 0.7, num_splits = 200L, 
+  start_seed = 1L, verbose = 0L)
+{
+  oldseed <- phecap_set_rng_seed(start_seed)
+  on.exit(phecap_restore_rng_seed(oldseed))
+  
+  if (!is.matrix(x)) {
+    x <- as.matrix(x)
+  }
+  n_total <- length(y)
+  n_train <- as.integer(n_total * train_percent)
+  n_test <- n_total - n_train
+  
+  if (is.character(method)) {
+    if (method == "plain") {
+      fit_function <- fit_plain
+      predict_function <- predict_linear
+    } else if (method == "lasso_cv") {
+      fit_function <- fit_lasso_cv
+      predict_function <- predict_linear
+    } else if (method == "lasso_bic") {
+      fit_function <- fit_lasso_bic
+      predict_function <- predict_linear
+    } else if (method == "svm") {
+      fit_function <- fit_svm
+      predict_function <- predict_svm
+    } else if (method == "rf") {
+      fit_function <- fit_rf
+      predict_function <- predict_rf
+    } else {
+      stop("Unknown value for method")
+    }
+  } else if (is.list(method) && all(
+    c("fit", "predict") %in% names(method))) {
+    fit_function <- method$fit
+    predict_function <- method$predict
+  } else {
+    stop("Unrecognize specification for method")
+  }
+
+  train_beta <- fit_function(x, y, penalty_weight)
+  train_prob <- predict_function(train_beta, x)
+  train_roc <- get_roc(y, train_prob)
+  train_auc <- get_auc(y, train_prob)
+
+  split_roc <- vector("list", num_splits)
+  split_auc <- vector("list", num_splits)
+  for(sp in seq_len(num_splits)) {
+    if (verbose > 0L && (sp %% verbose == 0L || 
+                         sp == 1L || sp == num_splits)) {
+      cat(sprintf("Split %d/%d\n", sp, num_splits))
+    }
+    set.seed(start_seed + sp)
+    i_train <- sort.int(sample.int(n_total, n_train, FALSE))
+    i_test <- setdiff(seq_len(n_total), i_train)
+    split_beta <- fit_function(
+      x[i_train, , drop = FALSE], y[i_train], penalty_weight)
+    split_prob <- predict_function(
+      split_beta, x[i_test, , drop = FALSE])
+    split_roc[[sp]] <- get_roc(y[i_test], split_prob)
+    split_auc[[sp]] <- get_auc(y[i_test], split_prob)
+  }
+  split_roc <- Reduce(`+`, split_roc) / num_splits
+  split_auc <- Reduce(`+`, split_auc) / num_splits
+
+  return(list(
+    coefficients = train_beta, method = method,
+    fit_function = fit_function,
+    predict_function = predict_function,
+    train_roc = train_roc, train_auc = train_auc,
+    split_roc = split_roc, split_auc = split_auc))
+}
+
+
 phecap_read_or_set_frame <- function(source)
 {
   data <- NULL
@@ -101,8 +200,8 @@ PhecapData <- function(
     validation_set <- sort.int(intersect(index_labeled, index_masked))
     data[[validation]] <- NULL
   } else {
-    old_random_state <- .Random.seed
-    set.seed(seed)
+    oldseed <- phecap_set_rng_seed(seed)
+    on.exit(phecap_restore_rng_seed(oldseed))
     num_labeled <- length(index_labeled)
     if (length(validation) != 1L || !all(is.numeric(validation))) {
       stop("Unrecognized value for 'validation'")
@@ -119,7 +218,6 @@ PhecapData <- function(
     index_masked <- sample(index_labeled, size, replace = FALSE)
     training_set <- sort.int(setdiff(index_labeled, index_masked))
     validation_set <- sort.int(intersect(index_labeled, index_masked))
-    .Random.seed <- old_random_state
   }
   
   if (is.null(feature_transformation)) {
@@ -173,9 +271,11 @@ phecap_check_surrogates <- function(
 phecap_run_feature_extraction <- function(
   data, surrogates, 
   subsample_size = 1000L, num_subsamples = 200L, 
-  start_seed = 45600L, verbose = 50L)
+  start_seed = 45600L, verbose = 0L)
 {
-  old_random_state <- .Random.seed
+  oldseed <- phecap_set_rng_seed(start_seed)
+  on.exit(phecap_restore_rng_seed(oldseed))
+  
   variable_list <- setdiff(names(data$frame), data$label)
   variable_matrix <- as.matrix(data$frame[, variable_list, drop = FALSE])
   phecap_check_surrogates(surrogates, variable_list)
@@ -248,10 +348,8 @@ phecap_run_feature_extraction <- function(
   names(frequency) <- variable_list
   selected <- variable_list[frequency >= 0.5]
 
-  result <- selected
-  attr(result, "frequency") <- frequency
+  result <- list(selected = selected, frequency = frequency)
   class(result) <- "PhecapFeatureExtraction"
-  .Random.seed <- old_random_state
   return(result)
 }
 
@@ -259,6 +357,13 @@ phecap_run_feature_extraction <- function(
 phecap_generate_feature_matrix <- function(
   data, surrogates, feature_selected)
 {
+  if (is.list(feature_selected) &&
+      "selected" %in% names(feature_selected)) {
+    feature_selected <- feature_selected$selected
+  } else {
+    feature_selected <- as.character(feature_selected)
+  }
+  
   frame <- data$frame
   surrogate_matrix <- sapply(surrogates, function(surrogate) {
     rowSums(frame[, surrogate$variable_names, drop = FALSE])
@@ -292,10 +397,16 @@ phecap_train_phenotyping_model <- function(
   data, surrogates, feature_selected, 
   method = "lasso_bic",
   train_percent = 0.7, num_splits = 200L,
-  start_seed = 78900L, verbose = 50L)
+  start_seed = 78900L, verbose = 0L)
 {
   if (length(data$training_set) < 2L) {
     stop("Too few training samples")
+  }
+  if (is.list(feature_selected) &&
+      "selected" %in% names(feature_selected)) {
+    feature_selected <- feature_selected$selected
+  } else {
+    feature_selected <- as.character(feature_selected)
   }
   
   feature <- phecap_generate_feature_matrix(
@@ -308,7 +419,7 @@ phecap_train_phenotyping_model <- function(
     rep.int(0.0, attr(feature, "free")),
     rep.int(1.0, ncol(feature) - attr(feature, "free")))
   
-  result <- get_roc_auc_with_splits(
+  result <- phecap_get_roc_auc_with_splits(
     x, y, penalty_weight, method = method,
     train_percent = train_percent, num_splits = num_splits,
     start_seed = start_seed, verbose = verbose)
@@ -401,18 +512,7 @@ print.PhecapFeatureExtraction <- function(x, ...)
 {
   cat("Feature(s) selected by",
       "surrogate-assisted feature extraction (SAFE)\n")
-  print(as.character(x), ...)
-}
-
-
-print.PhecapModel <- function(x, ...)
-{
-  cat("Phenotyping model:\n")
-  print(x$coefficients, ...)
-  cat("AUC on training data:", 
-      format(x$train_auc, digits = 3L), "\n")
-  cat("Average AUC on random splits:", 
-      format(x$split_auc, digits = 3L), "\n")
+  print(x$selected, ...)
 }
 
 

@@ -11,7 +11,7 @@ using unlabeled data and subsampling.
 phecap_run_feature_extraction(
   data, surrogates,
   subsample_size = 1000L, num_subsamples = 200L,
-  start_seed = 45600L, verbose = 50L)
+  start_seed = 45600L, verbose = 0L)
 }
 \arguments{
   \item{data}{
@@ -42,9 +42,9 @@ The variables selected are
 those selected in at least half of the subsamples.
 }
 \value{
-A character vector consisting of the names of the variables selected,
-with attribute frequency, which consists of the proportion of being selected
-among all subsamples for each variable.
+An object of class \code{PhecapFeatureExtraction}, with components
+  \item{selected}{the names of selected features}
+  \item{frequency}{the proportion of being selected for each feature}
 }
 \seealso{
 See \code{\link{PheCAP-package}} for code examples.
