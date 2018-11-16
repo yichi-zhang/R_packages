@@ -28,7 +28,7 @@ fit_lasso_cv <- function(
   penalty_weight <- pmin(pmax(penalty_weight, 1e-4), 1e4)
   model <- cv.glmnet(
     x, y, family = "binomial", thresh = 5e-7,
-    penalty.factor = penalty_weight, 
+    penalty.factor = penalty_weight,
     nlambda = 50L, lambda.min.ratio = 5e-3)
   as.double(coef(model, s = "lambda.min"))
 }
@@ -52,7 +52,7 @@ fit_lasso_bic <- function(
   penalty_weight <- pmin(pmax(penalty_weight, 1e-4), 1e4)
   model <- glmnet(
     x, y, family = "binomial", thresh = 5e-7,
-    penalty.factor = penalty_weight, 
+    penalty.factor = penalty_weight,
     nlambda = 50L, lambda.min.ratio = 5e-3)
   n <- length(y)
   dev <- deviance(model)
@@ -78,7 +78,7 @@ fit_svm <- function(x, y, ...)
     y1 <- factor(y, c(0, 1))
     tuning <- e1071::tune.svm(
       x, y1, gamma = c(0.2, 1, 5) / ncol(x), cost = 4.0 ** (-5L : 5L),
-      kernel = "radial", type = "C-classification", 
+      kernel = "radial", type = "C-classification",
       probability = TRUE)
     return(tuning$best.model)
   } else {
@@ -121,14 +121,14 @@ predict_rf <- function(beta, x, ...)
 ## roc and auc ----
 
 get_roc <- function(
-  y_true, y_score, 
+  y_true, y_score,
   cut = seq(0.001, 0.999, 0.001),
   tol = sqrt(.Machine$double.eps))
 {
   i <- order(y_score, decreasing = TRUE)
   y_score <- y_score[i]
   y_true <- y_true[i]
-  
+
   n <- length(y_true)
   t1 <- sum(y_true)
   t0 <- n - t1
@@ -142,11 +142,11 @@ get_roc <- function(
   thr <- y_score
   pct <- p1 / n
   acc <- (true_positive + true_negative) / n
-  
+
   tpr <- true_positive / t1
   fpr <- false_positive / t0
   tnr <- true_negative / t0
-  
+
   ppv <- true_positive / p1
   fdr <- false_positive / p1
   npv <- true_negative / p0
@@ -159,22 +159,22 @@ get_roc <- function(
 
   i <- which(diff(thr) < -tol)
   df <- data.frame(
-    thr = thr[i], 
-    pct = pct[i], 
+    thr = thr[i],
+    pct = pct[i],
     acc = acc[i],
-    tpr = tpr[i], 
-    fpr = fpr[i], 
+    tpr = tpr[i],
+    fpr = fpr[i],
     tnr = tnr[i],
-    ppv = ppv[i], 
-    fdr = fdr[i], 
+    ppv = ppv[i],
+    fdr = fdr[i],
     npv = npv[i],
-    sen = sen[i], 
-    spec = spec[i], 
-    prec = prec[i], 
+    sen = sen[i],
+    spec = spec[i],
+    prec = prec[i],
     rec = rec[i],
     f1 = f1[i])
   df <- df[order(df$thr), ]
-  
+
   f <- function(x, y) {
     approxfun(x, y, method = "constant", rule = 2L)(cut)
   }
@@ -182,7 +182,7 @@ get_roc <- function(
     cut = cut,
     pct = f(df$thr, df$pct),
     acc = f(df$thr, df$acc),
-    tpr = f(df$thr, df$tor),
+    tpr = f(df$thr, df$tpr),
     fpr = f(df$thr, df$fpr),
     tnr = f(df$thr, df$tnr),
     ppv = f(df$thr, df$ppv),
@@ -193,26 +193,26 @@ get_roc <- function(
     prec = f(df$thr, df$prec),
     rec = f(df$thr, df$rec),
     f1 = f(df$thr, df$f1))
-  
+
   return(df)
 }
 
 
-get_auc <- function(y_true, y_score) 
+get_auc <- function(y_true, y_score)
 {
   t1 <- sum(y_true)
   t0 <- length(y_true) - t1
   r <- rank(y_score, ties.method = "average")
   auc <- (sum(r[y_true > 0.5]) - t1 * (t1 + 1) / 2) / t1 / t0
-  
+
   return(auc)
 }
 
 
 get_roc_auc_with_splits <- function(
-  x, y, penalty_weight = NULL, 
-  method = "lasso_bic", 
-  train_percent = 0.7, num_splits = 200L, 
+  x, y, penalty_weight = NULL,
+  method = "lasso_bic",
+  train_percent = 0.7, num_splits = 200L,
   start_seed = 1L, verbose = 50L)
 {
   old_random_state <- .Random.seed
@@ -222,7 +222,7 @@ get_roc_auc_with_splits <- function(
   n_total <- length(y)
   n_train <- as.integer(n_total * train_percent)
   n_test <- n_total - n_train
-  
+
   if (is.character(method)) {
     if (method == "plain") {
       fit_function <- fit_plain
@@ -258,7 +258,7 @@ get_roc_auc_with_splits <- function(
   split_roc <- vector("list", num_splits)
   split_auc <- vector("list", num_splits)
   for(sp in seq_len(num_splits)) {
-    if (verbose > 0L && (sp %% verbose == 0L || 
+    if (verbose > 0L && (sp %% verbose == 0L ||
                          sp == 1L || sp == num_splits)) {
       cat(sprintf("Split %d/%d\n", sp, num_splits))
     }
