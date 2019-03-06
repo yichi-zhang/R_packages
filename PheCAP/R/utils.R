@@ -158,13 +158,6 @@ PhecapData <- function(
   }
   patient_id <- patient_id_part
 
-  label_part <- data[[label]]
-  eps <- sqrt(.Machine$double.eps)
-  label_part[abs(label_part) < eps] <- 0
-  label_part[abs(label_part - 1) < eps] <- 1
-  data[is.na(data)] <- 0
-  data[[label]] <- label_part
-
   bad <- !sapply(data, is.numeric)
   if (any(bad)) {
     warning(sprintf(
@@ -192,6 +185,13 @@ PhecapData <- function(
   if (!all(label %in% columns)) {
     stop(sprintf("%s is not found in the data", label))
   }
+
+  label_part <- data[[label]]
+  eps <- sqrt(.Machine$double.eps)
+  label_part[abs(label_part) < eps] <- 0
+  label_part[abs(label_part - 1) < eps] <- 1
+  data[is.na(data)] <- 0
+  data[[label]] <- label_part
 
   index_labeled <- which(!is.na(data[[label]]))
   if (is.character(validation)) {

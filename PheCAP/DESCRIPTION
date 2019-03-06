@@ -1,11 +1,11 @@
 Package: PheCAP
 Type: Package
-Title: High-Throughput Phenotyping with Electronic Health Records 
+Title: High-Throughput Phenotyping with Electronic Health Records
        using a Common Automated Pipeline
 Version: 1.0
-Date: 2018-09-28
+Date: 2019-03-04
 Authors@R: c(person("Yichi", "Zhang", role = c("aut", "cre"),
-		     email = "yichizhang@uri.edu"))
+		         email = "yichizhang@uri.edu"))
 Author: Yichi Zhang [aut, cre]
 Maintainer: Yichi Zhang <yichizhang@uri.edu>
 Description: Implement surrogate-assisted feature extraction (SAFE) and
@@ -13,6 +13,6 @@ Description: Implement surrogate-assisted feature extraction (SAFE) and
              Background and details about the methods can be found at <doi:10.1093/jamia/ocw135> and <doi:10.1136/bmj.h1885>.
 License: GPL (>= 2)
 ByteCompile: yes
-Imports: graphics, methods, stats, utils, glmnet
+Imports: graphics, methods, stats, utils, glmnet, RMySQL
 Suggests: ggplot2, e1071, randomForest
 Depends: R (>= 3.3.0)
