@@ -21,7 +21,7 @@ phecap_restore_rng_seed <- function(oldseed)
 
 
 phecap_get_roc_auc_with_splits <- function(
-  x, y, penalty_weight = NULL,
+  x, y, subject_weight, penalty_weight = NULL,
   method = "lasso_bic",
   train_percent = 0.7, num_splits = 200L,
   start_seed = 1L, verbose = 0L)
@@ -37,36 +37,29 @@ phecap_get_roc_auc_with_splits <- function(
   n_test <- n_total - n_train
 
   if (is.character(method)) {
-    if (method == "plain") {
-      fit_function <- fit_plain
-      predict_function <- predict_linear
-    } else if (method == "lasso_cv") {
-      fit_function <- fit_lasso_cv
-      predict_function <- predict_linear
-    } else if (method == "lasso_bic") {
-      fit_function <- fit_lasso_bic
-      predict_function <- predict_linear
-    } else if (method == "svm") {
-      fit_function <- fit_svm
-      predict_function <- predict_svm
-    } else if (method == "rf") {
-      fit_function <- fit_rf
-      predict_function <- predict_rf
-    } else {
-      stop("Unknown value for method")
+    known <- c(
+      "plain", "ridge_cv", "lasso_cv", "lasso_bic",
+      "alasso_cv", "alasso_bic", "svm", "rf", "xgb")
+    unknown <- setdiff(method, known)
+    if (length(unknown) > 0L) {
+      stop(paste0("Unknown values for 'method': ",
+                  paste0(unknown, collapse = ", ")))
     }
+    fit_function <- function(...) fit_multiple(method, ...)
+    predict_function <- function(...) predict_multiple(...)
   } else if (is.list(method) && all(
     c("fit", "predict") %in% names(method))) {
     fit_function <- method$fit
     predict_function <- method$predict
+    method <- "(custom)"
   } else {
     stop("Unrecognize specification for method")
   }
 
-  train_beta <- fit_function(x, y, penalty_weight)
+  train_beta <- fit_function(x, y, subject_weight, penalty_weight)
   train_prob <- predict_function(train_beta, x)
-  train_roc <- get_roc(y, train_prob)
-  train_auc <- get_auc(y, train_prob)
+  train_roc <- get_roc(y, train_prob, subject_weight)
+  train_auc <- get_auc(y, train_prob, subject_weight)
 
   split_roc <- vector("list", num_splits)
   split_auc <- vector("list", num_splits)
@@ -79,11 +72,14 @@ phecap_get_roc_auc_with_splits <- function(
     i_train <- sort.int(sample.int(n_total, n_train, FALSE))
     i_test <- setdiff(seq_len(n_total), i_train)
     split_beta <- fit_function(
-      x[i_train, , drop = FALSE], y[i_train], penalty_weight)
+      x[i_train, , drop = FALSE], y[i_train],
+      subject_weight[i_train], penalty_weight)
     split_prob <- predict_function(
       split_beta, x[i_test, , drop = FALSE])
-    split_roc[[sp]] <- get_roc(y[i_test], split_prob)
-    split_auc[[sp]] <- get_auc(y[i_test], split_prob)
+    split_roc[[sp]] <- get_roc(
+      y[i_test], split_prob, subject_weight[i_test])
+    split_auc[[sp]] <- get_auc(
+      y[i_test], split_prob, subject_weight[i_test])
   }
   split_roc <- Reduce(`+`, split_roc) / num_splits
   split_auc <- Reduce(`+`, split_auc) / num_splits
@@ -123,8 +119,8 @@ phecap_read_or_set_frame <- function(source)
 
 PhecapData <- function(
   data, hu_feature, label, validation,
-  patient_id = NULL,  seed = 12300L,
-  feature_transformation = log1p)
+  patient_id = NULL, subject_weight = NULL,
+  seed = 12300L, feature_transformation = log1p)
 {
   if (is.list(data) && !is.data.frame(data)) {
     if (length(data) == 0L) {
@@ -158,6 +154,15 @@ PhecapData <- function(
   }
   patient_id <- patient_id_part
 
+  if (is.null(subject_weight)) {
+    subject_weight <- rep.int(1.0, nrow(data))
+  }
+  if (!is.numeric(subject_weight)) {
+    stop("'subject_weight' should be of type numeric")
+  } else if (length(subject_weight) != nrow(data)) {
+    stop("'subject_weight' has an inconsistent size with 'data'")
+  }
+
   bad <- !sapply(data, is.numeric)
   if (any(bad)) {
     warning(sprintf(
@@ -168,7 +173,7 @@ PhecapData <- function(
   columns <- names(data)
 
   if (!is.character(hu_feature)) {
-    stop("'hu_feature' should be of type character ")
+    stop("'hu_feature' should be of type character")
   }
   if (!all(hu_feature %in% columns)) {
     stop(sprintf(
@@ -231,6 +236,7 @@ PhecapData <- function(
     hu_feature = hu_feature,
     label = label,
     patient_id = patient_id,
+    subject_weight = subject_weight,
     training_set = training_set,
     validation_set = validation_set,
     feature_transformation = feature_transformation)
@@ -268,9 +274,23 @@ phecap_check_surrogates <- function(
 }
 
 
+phecap_impose_dropout <- function(x, dropout_proportion)
+{
+  x <- as.matrix(x)
+  count <- as.integer(dropout_proportion * nrow(x) + 0.5)
+  x <- apply(x, 2, function(x1) {
+    ii <- sort.int(sample.int(nrow(x), count, replace = FALSE))
+    x1[ii] <- 0.0
+    x1
+  })
+  x
+}
+
+
 phecap_run_feature_extraction <- function(
   data, surrogates,
   subsample_size = 1000L, num_subsamples = 200L,
+  dropout_proportion = 0, frequency_cutoff = 0.5,
   start_seed = 45600L, verbose = 0L)
 {
   oldseed <- phecap_set_rng_seed(start_seed)
@@ -332,6 +352,9 @@ phecap_run_feature_extraction <- function(
 
       y <- c(rep(1.0, length(ipos)), rep(0.0, length(ineg)))
       x <- variable_matrix[c(ipos, ineg), -exclusion, drop = FALSE]
+      if (dropout_proportion > 0) {
+        x <- phecap_impose_dropout(x, dropout_proportion)
+      }
 
       alpha <- fit_lasso_bic(x, y)
       alpha <- alpha[-1L]  # drop intercept
@@ -346,7 +369,7 @@ phecap_run_feature_extraction <- function(
   selection <- do.call("rbind", selection)
   frequency <- colMeans(selection)
   names(frequency) <- variable_list
-  selected <- variable_list[frequency >= 0.5]
+  selected <- variable_list[frequency >= frequency_cutoff]
 
   result <- list(selected = selected, frequency = frequency)
   class(result) <- "PhecapFeatureExtraction"
@@ -415,12 +438,14 @@ phecap_train_phenotyping_model <- function(
   ii <- data$training_set
   x <- feature[ii, , drop = FALSE]
   y <- label[ii]
+  subject_weight <- data$subject_weight[ii]
   penalty_weight <- c(
     rep.int(0.0, attr(feature, "free")),
     rep.int(1.0, ncol(feature) - attr(feature, "free")))
 
   result <- phecap_get_roc_auc_with_splits(
-    x, y, penalty_weight, method = method,
+    x, y, subject_weight, penalty_weight,
+    method = method,
     train_percent = train_percent, num_splits = num_splits,
     start_seed = start_seed, verbose = verbose)
   if (is.numeric(result$coefficients)) {
@@ -450,10 +475,11 @@ phecap_validate_phenotyping_model <- function(
   ii <- data$validation_set
   x <- feature[ii, , drop = FALSE]
   y <- label[ii]
+  subject_weight <- data$subject_weight[ii]
 
   prediction <- model$predict_function(model$coefficients, x)
-  valid_roc <- get_roc(y, prediction)
-  valid_auc <- get_auc(y, prediction)
+  valid_roc <- get_roc(y, prediction, subject_weight)
+  valid_auc <- get_auc(y, prediction, subject_weight)
 
   result <- list(
     coefficients = model$coefficients,
@@ -505,6 +531,10 @@ print.PhecapData <- function(x, ...)
   cat(sprintf(
     "Size of validation samples: %d\n",
     length(x$validation_set)))
+  if (sd(x$subject_weight) > 1e-8) {
+    cat(sprintf(
+      "Subject weights are specified\n"))
+  }
 }
 
 

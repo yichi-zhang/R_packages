@@ -1,7 +1,8 @@
 importFrom("graphics", "legend", "lines", "plot")
 importFrom("methods", "is")
 importFrom("stats", "aggregate", "approxfun", "binomial", "coef",
-           "deviance", "glm", "plogis", "predict", "quasibinomial")
+           "deviance", "glm", "plogis", "predict", "quasibinomial",
+           "sd")
 importFrom("utils", "read.csv", "read.table", "write.table")
 importFrom("glmnet", "glmnet", "cv.glmnet")
 importFrom("RMySQL", "dbConnect", "dbDisconnect",

@@ -9,7 +9,8 @@ Specify the data to be used for phenotyping.
 \usage{
 PhecapData(
   data, hu_feature, label, validation,
-  patient_id = NULL, seed = 12300L, feature_transformation = log1p)
+  patient_id = NULL, subject_weight = NULL,
+  seed = 12300L, feature_transformation = log1p)
 }
 \arguments{
   \item{data}{
@@ -50,6 +51,9 @@ A character vector for the column names, if any, that uniquely identifies
 each patient.
 Such variables must appear in the data.
 patient_id can be NULL if such fields are not contained in the data.
+}
+  \item{subject_weight}{
+An optional numeric vector of weights for observations.
 }
   \item{seed}{
 If validation samples need to be drawn from all labeled samples,
